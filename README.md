@@ -1,9 +1,10 @@
-# Orb-Browser
-This is an excellent tab browser developed with PySide６ that is fast and has ad-blocking and other features.
-Paste the URL of the video you want to watch into the field labeled "YouTube Video URL" and press enter to watch the video.
-Other features include bookmark bookmarking and tracker prevention
-
+# Orb Browser
+The excellent tab browser built on Python 3.11 using PySide6 and some ad-block, tracker-prevention features.
 
 <img src="https://i.imgur.com/jHt3f6i.png" alt="Orb Browser Version1.0" title="Orb Browser Version1.0">
-The installer can also be downloaded from the following URL
-https://x.gd/T2wNS
+
+## Official Website
+https://yk.rsw.jp/browser/
+
+### Note
+After 5.0.1, maintainers of this program has been changed from [takerin-123](https://github.com/takerin-123) to [YK Developer Team](https://github.com/YUKKURI-LINUX). Older versions' support will be stopped, and all components of this will be changed dramatically.
