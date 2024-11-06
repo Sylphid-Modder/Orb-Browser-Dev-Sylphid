@@ -1,4 +1,3 @@
-# System Libraries
 import os
 import sys
 import asyncio
@@ -11,12 +10,50 @@ from PySide6.QtWebEngineWidgets import *
 from PySide6.QtWebEngineCore import QWebEngineProfile
 from PySide6.QtCore import QTimer
 
-# Local Libraries
-from modules.adblock import AdblockX
-from modules.bookmark import BookmarkAction
-from modules.darkmode import DarkMode
-from modules.diag_settings import SettingsDialog
-from modules.memsaver import MemorySaver
+class AdblockX:
+    def __init__(self, page, adBlocker):
+        self.page = page
+        self.block_lists = []
+        self.tracker_lists = []
+        self.adBlocker = adBlocker
+        self.session = aiohttp.ClientSession()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.session.close()
+
+    async def fetch_lists(self, url):
+        try:
+            async with self.session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to fetch lists: {response.status}")
+                return (await response.text()).split('\n')
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return []
+
+    async def update_lists(self):
+        block_lists, tracker_lists = await asyncio.gather(
+            self.fetch_lists("https://easylist.to/easylist/easylist.txt"),
+            self.fetch_lists("https://easylist.to/easylist/easyprivacy.txt")
+        )
+        if block_lists and block_lists != self.block_lists:
+            self.block_lists = block_lists
+            await self.blockAds()
+        if tracker_lists and tracker_lists != self.tracker_lists:
+            self.tracker_lists = tracker_lists
+            await self.blockTrackers()
+
+    async def blockAds(self):
+        await self.adBlocker.setUrlFilterRules(self.block_lists)
+
+    async def blockTrackers(self):
+        await self.adBlocker.setUrlFilterRules(self.tracker_lists)
+
+    async def main(self):
+        await self.update_lists()
+
+    async def updateBlockedContent(self, event):
+        await self.update_lists()
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -284,6 +321,185 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("About Orb Browser")
         elif self.language == "中文":
             self.setWindowTitle("关于 Orb Browser")
+
+class BookmarkAction(QAction):
+    def __init__(self, title, parent):
+        super().__init__(title, parent)
+        self.setContextMenuPolicy(Qt.ActionsContextMenu)
+        self.customContextMenuRequested.connect(self.showContextMenu)
+        self.url = ""
+
+    def showContextMenu(self, point):
+        contextMenu = QMenu(self.parent())
+        deleteAction = QAction("削除", self)
+        deleteAction.triggered.connect(self.deleteBookmark)
+        contextMenu.addAction(deleteAction)
+        contextMenu.exec_(self.mapToGlobal(point))
+
+    def deleteBookmark(self):
+        tree = ET.parse('shortcuts.xml')
+        root = tree.getroot()
+        for shortcut in root.findall('shortcut'):
+            if shortcut.find('url').text == self.url:
+                root.remove(shortcut)
+                tree.write('shortcuts.xml')
+                break
+        self.parent().removeAction(self)
+
+class MemorySaver(QObject):
+    def __init__(self, tabs):
+        super().__init__()
+        self.tabs = tabs
+        self.tabs.currentChanged.connect(self.save_memory)
+        self.memory_saver_enabled = False
+        self.last_access_times = {}
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_inactive_tabs)
+        self.timer.start(60000)  # 1分ごとにチェック
+
+
+    def save_memory(self, index):
+        if self.memory_saver_enabled:
+            current_time = QDateTime.currentDateTime()
+            for i in range(self.tabs.count()):
+                if i != index:
+                    if i not in self.last_access_times:
+                        self.last_access_times[i] = current_time
+                    self.tabs.widget(i).setVisible(False)
+                else:
+                    self.last_access_times[i] = current_time
+                    self.tabs.widget(i).setVisible(True)
+        else:
+            for i in range(self.tabs.count()):
+                self.tabs.widget(i).setVisible(True)
+
+    def toggle_memory_saver(self, enabled):
+        self.memory_saver_enabled = enabled
+        self.save_memory(self.tabs.currentIndex())
+
+    def check_inactive_tabs(self):
+        if not self.memory_saver_enabled:
+            return
+
+        current_time = QDateTime.currentDateTime()
+        for i in range(self.tabs.count()):
+            if i != self.tabs.currentIndex():
+                last_access_time = self.last_access_times.get(i, current_time)
+                if last_access_time.secsTo(current_time) > 600:  # 10分以上経過
+                    self.tabs.widget(i).setVisible(False)
+                else:
+                    self.tabs.widget(i).setVisible(True)
+
+
+    
+
+class DarkMode(QObject):
+    def __init__(self, tabs):
+        super().__init__()
+        self.tabs = tabs
+        self.dark_mode_enabled = False
+
+    def toggle_dark_mode(self, enabled):
+        self.dark_mode_enabled = enabled
+        for i in range(self.tabs.count()):
+            web_view = self.tabs.widget(i)
+            if enabled:
+                web_view.page().setBackgroundColor(Qt.black)
+                self.apply_dark_mode_js(web_view)
+            
+            else:
+                web_view.page().setBackgroundColor(Qt.white)
+                self.remove_dark_mode_js(web_view)
+
+    def apply_dark_mode_js(self, web_view):
+        js_code = """
+        document.body.style.backgroundColor = 'black';
+        document.body.style.color = 'white';
+        """
+        web_view.page().runJavaScript(js_code)
+
+    def remove_dark_mode_js(self, web_view):
+        js_code = """
+        document.body.style.backgroundColor = 'white';
+        document.body.style.color = 'black';
+        """
+        web_view.page().runJavaScript(js_code)
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent, memory_saver, dark_mode, language):
+        super().__init__(parent)
+        self.setWindowTitle("設定")
+        self.language = language
+        self.memory_saver = memory_saver
+        self.dark_mode = dark_mode
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # ダークモードのトグルボタン
+        dark_mode_layout = QHBoxLayout()
+        dark_mode_toggle = QLabel("ダークモード")
+        self.dark_mode_toggle = QCheckBox()
+        self.dark_mode_toggle.setChecked(self.dark_mode.dark_mode_enabled)
+        self.dark_mode_toggle.toggled.connect(self.dark_mode.toggle_dark_mode)
+        dark_mode_layout.addWidget(self.dark_mode_toggle)
+        dark_mode_layout.addWidget(self.dark_mode_toggle)
+        layout.addLayout(dark_mode_layout)
+        self.dark_mode_toggle.setChecked(self.dark_mode.dark_mode_enabled)
+
+        # メモリーセイバーのトグルボタン
+        memory_saver_layout = QHBoxLayout()
+        memory_saver_toggle = QLabel("メモリーセイバー")
+        self.memory_saver_toggle = QCheckBox()
+        self.memory_saver_toggle.setChecked(self.memory_saver.memory_saver_enabled)
+        self.memory_saver_toggle.toggled.connect(self.memory_saver.toggle_memory_saver)
+        memory_saver_layout.addWidget(memory_saver_toggle)
+        memory_saver_layout.addWidget(self.memory_saver_toggle)
+        layout.addLayout(memory_saver_layout)
+        self.memory_saver_toggle.setChecked(self.memory_saver.memory_saver_enabled)
+
+        language_layout = QHBoxLayout()
+        language_label = QLabel("言語設定")
+        self.language_toggle = QComboBox()
+        self.language_toggle.addItems(["日本語", "English", "中文"])
+        self.language_toggle.setCurrentText(self.language)
+        self.language_toggle.currentTextChanged.connect(self.update_language)
+        language_layout.addWidget(self.language_toggle)
+        language_layout.addWidget(self.language_toggle)
+        layout.addLayout(language_layout)
+
+        # Orb Browserについて
+        self.about_layout = QHBoxLayout()
+        self.about_label = QLabel("Orb Browserについて")
+        self.about_text = QLabel("Orb Browserは、Python と Qt を使って作られた軽量なブラウザです。")
+        self.about_layout.addWidget(self.about_label)
+        self.about_layout.addWidget(self.about_text)
+        layout.addLayout(self.about_layout)
+
+        self.setLayout(layout)
+
+    def update_language(self, language):
+        self.language = language
+        if language == "日本語":
+            self.about_label.setText("Orb Browserについて")
+            self.about_text.setText("Orb Browserは、Python と Qt を使って作られた軽量なブラウザです")
+            self.setWindowTitle("設定")
+            self.dark_mode_toggle.setText("ダークモード")
+            self.memory_saver_toggle.setText("メモリーセイバー")
+        elif language == "English":
+            self.about_label.setText("About Orb Browser")
+            self.about_text.setText("Orb Browser is a lightweight and fast web browser developed using Python and QT.")
+            self.setWindowTitle("Settings")
+            self.dark_mode_toggle.setText("Dark Mode")
+            self.memory_saver_toggle.setText("Memory Saver")
+        elif language == "中文":
+            self.about_label.setText("关于 Orb 浏览器")
+            self.about_text.setText("Orb Browser 是一款使用 Python")
+            self.setWindowTitle("设置")
+            self.dark_mode_toggle.setText("暗模式")
+            self.memory_saver_toggle.setText("内存保护器")
 
 app = QApplication(sys.argv)
 app.setApplicationName("OrbBrowser")
