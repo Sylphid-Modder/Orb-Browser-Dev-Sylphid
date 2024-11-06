@@ -1,3 +1,6 @@
+import aiohttp
+import asyncio
+
 class AdblockX:
     def __init__(self, page, adBlocker):
         self.page = page

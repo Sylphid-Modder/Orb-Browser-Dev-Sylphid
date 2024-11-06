@@ -1,8 +1,6 @@
 # System Libraries
 import os
 import sys
-import asyncio
-import aiohttp
 import xml.etree.ElementTree as ET
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *

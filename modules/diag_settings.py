@@ -1,3 +1,5 @@
+from PySide6.QtWidgets import *
+
 class SettingsDialog(QDialog):
     def __init__(self, parent, memory_saver, dark_mode, language):
         super().__init__(parent)
