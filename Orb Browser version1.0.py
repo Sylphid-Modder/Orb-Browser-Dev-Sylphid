@@ -1,7 +1,9 @@
 import os
 import sys
+import re
 import asyncio
 import aiohttp
+import threading
 import xml.etree.ElementTree as ET
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
@@ -9,6 +11,7 @@ from PySide6.QtGui import *
 from PySide6.QtWebEngineWidgets import *
 from PySide6.QtWebEngineCore import QWebEngineProfile
 from PySide6.QtCore import QTimer
+import yt_dlp
 
 class AdblockX:
     def __init__(self, page, adBlocker):
@@ -107,6 +110,14 @@ class MainWindow(QMainWindow):
         self.star_button.setStatusTip("Add shortcut to vertical bar")
         self.star_button.triggered.connect(self.add_shortcut)
         self.toolbar.addAction(self.star_button)
+        self.youtube_id_bar = QLineEdit()
+        self.youtube_id_bar.setPlaceholderText("YouTube Video ID")
+        navtb.addWidget(self.youtube_id_bar)
+        self.youtube_id_bar.returnPressed.connect(self.play_youtube_video)
+        self.youtube_download_bar = QLineEdit()
+        self.youtube_download_bar.setPlaceholderText("youtube download")
+        navtb.addWidget(self.youtube_download_bar)
+        self.youtube_download_bar.returnPressed.connect(self.download_youtube_video)
         home_btn.triggered.connect(self.navigate_home)
         navtb.addAction(home_btn)
         navtb.addSeparator()
@@ -141,13 +152,13 @@ class MainWindow(QMainWindow):
         ai_url = QUrl("https://supertakerin2-comcomgptfree.hf.space/")
         self.add_new_tab(ai_url, "AI Tool")
 
-    def add_new_tab(self, qurl=None, label="blank"):
+    def add_new_tab(self, qurl=None, label="ブランク"):
         if qurl is None:
             qurl = QUrl('https://takerin-123.github.io/qqqqq.github.io/')
         elif isinstance(qurl, str):
             qurl = QUrl(qurl)
         elif not isinstance(qurl, QUrl):
-            raise TypeError("Variable 'qurl' must be a QUrl or a string")
+            raise TypeError("qurl must be a QUrl or a string")
         
         browser = QWebEngineView()
         browser.setUrl(qurl)
@@ -171,7 +182,6 @@ class MainWindow(QMainWindow):
             return
         self.tabs.removeTab(i)
         QWidget.deleteLater()
-    
     def update_title(self, browser):
         if browser != self.tabs.currentWidget():
             return
@@ -197,6 +207,22 @@ class MainWindow(QMainWindow):
         self.urlbar.setText(q.toString())
         self.urlbar.setCursorPosition(0)
 
+    def extract_video_id(self, youtube_url):
+        video_id_pattern = re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/)([^&?/\s]+)')
+        match = video_id_pattern.search(youtube_url)
+        if match:
+            return match.group(1)
+        return None
+
+    def play_youtube_video(self):
+        youtube_url = self.youtube_id_bar.text()
+        video_id = self.extract_video_id(youtube_url)
+        if video_id:
+            embed_url = f"https://www.youtube.com/embed/{video_id}?autoplay=1"
+            self.add_new_tab(QUrl(embed_url), 'YouTube Video')
+        else:
+            pass
+
     def on_downloadRequested(self, download):
         home_dir = os.path.expanduser("~")
         download_dir = os.path.join(home_dir, "Downloads")
@@ -220,6 +246,19 @@ class MainWindow(QMainWindow):
     def remove_progress_bar(self, progress_bar):
         self.status.removeWidget(progress_bar)
         progress_bar.deleteLater()
+
+    def download_youtube_video(self):
+        youtube_url = self.youtube_download_bar.text()
+        video_id = self.extract_video_id(youtube_url)
+        if video_id:
+            threading.Thread(target=self.download_video, args=(video_id,)).start()
+        else:
+            pass
+
+    def download_video(self, video_id):
+        ydl_opts = {'format': 'mp4'}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f'http://www.youtube.com/watch?v={video_id}'])
 
     def add_shortcut(self):
         current_tab = self.tabs.currentWidget()
