@@ -1,3 +1,7 @@
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMenu
+from PySide6.QtGui import QAction
+import xml.etree.ElementTree as ET
 class BookmarkAction(QAction):
     def __init__(self, title, parent):
         super().__init__(title, parent)

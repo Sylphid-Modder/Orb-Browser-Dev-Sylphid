@@ -1,3 +1,4 @@
+from PySide6.QtCore import QObject,QDateTime,QTimer
 class MemorySaver(QObject):
     def __init__(self, tabs):
         super().__init__()
