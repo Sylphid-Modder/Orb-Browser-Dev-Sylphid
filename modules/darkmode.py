@@ -1,5 +1,4 @@
 from PySide6.QtCore import Qt, QObject
-
 class DarkMode(QObject):
     def __init__(self, tabs):
         super().__init__()
